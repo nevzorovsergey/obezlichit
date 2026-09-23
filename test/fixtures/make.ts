@@ -13,6 +13,6 @@ export async function identityPdf(lines: string[]): Promise<Uint8Array> {
   doc.registerFontkit(fontkit);
   const font = await doc.embedFont(ttf("DejaVuSerif.ttf"), { subset: true });
   const page = doc.addPage([595, 842]);
-  lines.forEach((text, i) => page.drawText(text, { x: 50, y: 780 - i * 18, size: 11, font }));
+  lines.forEach((text, i) => page.drawText(text, { x: 30, y: 780 - i * 14, size: 8, font }));
   return doc.save({ useObjectStreams: false });
 }
