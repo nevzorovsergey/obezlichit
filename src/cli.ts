@@ -3,8 +3,7 @@
 // Файлы одного комплекта передаются вместе: у них будет общая таблица подмен.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { applyPlan, makePlan } from "./core/obezlichit";
-import { extractText } from "./core/pdf/text";
+import { applyPlan, makePlan, originalsOf } from "./core/obezlichit";
 import { selfcheck } from "./core/selfcheck";
 
 const args = process.argv.slice(2);
@@ -25,13 +24,12 @@ console.log("Подмены:");
 for (const s of plan.substitutions.values()) console.log(`  ${s.kind.padEnd(9)} ×${String(s.count).padEnd(3)} ${mask(s.original)} → ${s.replacement}`);
 
 const out = await applyPlan(plan);
-const originals = [...plan.substitutions.values()].map((s) => s.original);
+const originals = originalsOf(plan);
 mkdirSync(outDir, { recursive: true });
 const counters = new Map<string, number>();
 let ok = true;
 for (const o of out) {
-  const text = await extractText(o.bytes);
-  const stem = /ПОСТАНОВЛЕНИЕ/i.test(text) ? "postanovlenie" : /(^|[^А-Яа-яЁё])Акт(?![а-яё])/.test(text) ? "akt" : "dokument";
+  const stem = o.docType === "resolution" ? "postanovlenie" : o.docType === "act" ? "akt" : "dokument";
   const n = (counters.get(stem) ?? 0) + 1;
   counters.set(stem, n);
   const name = `${stem}-${n}.pdf`;

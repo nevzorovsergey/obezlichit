@@ -10,7 +10,7 @@ describe("запасной шрифт", () => {
     // в тексте нет заглавной «Т»: подмена «Тестов Тест Тестович» в исходном шрифте невозможна
     const lines = ["момент фиксации является Ким Юрий Юрьевич Дата рождения: 01.02.1980 далее"];
     const plan = await makePlan([{ name: "a.pdf", bytes: await identityPdf(lines) }], seededRng(5));
-    expect([...plan.substitutions.values()].find((s) => s.kind === "fio")!.needsFallback).toBe(true);
+    expect([...plan.substitutions.values()].find((s) => s.kind === "fio")!.cover).not.toContain("Т");
     const [out] = await applyPlan(plan);
     expect(out!.report.fallback).toBe(1);
     expect(out!.report.unencodable).toEqual([]);
