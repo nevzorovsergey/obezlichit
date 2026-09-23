@@ -11,7 +11,11 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "dev": "vite",
+    "build": "node scripts/build.mjs",
+    "preview": "vite preview --outDir ../dist",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

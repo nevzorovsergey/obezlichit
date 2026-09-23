@@ -8,14 +8,21 @@ import type { Fallback } from "./rewrite";
 export interface FallbackFonts { regular: Uint8Array; bold: Uint8Array }
 
 let fonts: FallbackFonts | undefined;
+let loader: (() => Promise<FallbackFonts>) | undefined;
 
 /** Байты шрифтов: на странице их подкладывает сборка; в Node читаются из `assets/fonts`. */
 export function setFallbackFonts(f: FallbackFonts): void { fonts = f; }
+/** Отложенная загрузка — шрифты нужны редко, страница грузит их только по требованию. */
+export function setFallbackLoader(fn: () => Promise<FallbackFonts>): void { loader = fn; }
 
 async function load(): Promise<FallbackFonts> {
   if (fonts) return fonts;
+  if (loader) return (fonts = await loader());
   const { readFileSync } = await import("node:fs");
-  const read = (n: string): Uint8Array => new Uint8Array(readFileSync(new URL(`../../../assets/fonts/${n}`, import.meta.url)));
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "assets", "fonts");
+  const read = (n: string): Uint8Array => new Uint8Array(readFileSync(join(dir, n)));
   fonts = { regular: read("LiberationSerif-Regular.ttf"), bold: read("LiberationSerif-Bold.ttf") };
   return fonts;
 }
