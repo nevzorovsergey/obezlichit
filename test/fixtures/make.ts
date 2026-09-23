@@ -16,3 +16,18 @@ export async function identityPdf(lines: string[]): Promise<Uint8Array> {
   lines.forEach((text, i) => page.drawText(text, { x: 30, y: 780 - i * 14, size: 8, font }));
   return doc.save({ useObjectStreams: false });
 }
+
+/** Постановление с векторным QR (модули — залитые прямоугольники, как у LibreOffice). */
+export async function pdfWithQr(lines: string[], qrData: string): Promise<Uint8Array> {
+  const QRCode = (await import("qrcode")).default;
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const font = await doc.embedFont(ttf("DejaVuSerif.ttf"), { subset: true });
+  const page = doc.addPage([595, 842]);
+  lines.forEach((text, i) => page.drawText(text, { x: 30, y: 780 - i * 14, size: 8, font }));
+  const q = QRCode.create(qrData, { errorCorrectionLevel: "M" });
+  const n = q.modules.size, m = 100 / n;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (q.modules.get(r, c)) page.drawRectangle({ x: 400 + c * m, y: 600 - (r + 1) * m, width: m, height: m, borderWidth: 0 });
+  return doc.save({ useObjectStreams: false });
+}
