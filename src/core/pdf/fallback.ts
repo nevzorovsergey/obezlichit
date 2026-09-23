@@ -1,32 +1,43 @@
-// Запасной шрифт: DejaVu Serif (свободная лицензия Bitstream Vera), встраивается урезанным —
-// только если в шрифте документа не хватает букв подмены.
+// Запасной шрифт — Liberation Serif (SIL OFL 1.1), метрически совместимый с Times New Roman,
+// которым набраны постановления. Встраивается урезанным и только если в шрифте документа
+// не хватает букв подмены. Полужирное значение набирается полужирным.
 import fontkit from "@pdf-lib/fontkit";
-import { PDFName, type PDFDocument, type PDFPage } from "pdf-lib";
+import { PDFName, type PDFDocument, type PDFFont } from "pdf-lib";
 import type { Fallback } from "./rewrite";
 
-let fontBytes: Uint8Array | undefined;
+export interface FallbackFonts { regular: Uint8Array; bold: Uint8Array }
 
-/** Байты шрифта: в Node — из пакета, на странице их подкладывает сборка (setFallbackFont). */
-export function setFallbackFont(bytes: Uint8Array): void { fontBytes = bytes; }
+let fonts: FallbackFonts | undefined;
 
-async function loadFont(): Promise<Uint8Array> {
-  if (fontBytes) return fontBytes;
+/** Байты шрифтов: на странице их подкладывает сборка; в Node читаются из `assets/fonts`. */
+export function setFallbackFonts(f: FallbackFonts): void { fonts = f; }
+
+async function load(): Promise<FallbackFonts> {
+  if (fonts) return fonts;
   const { readFileSync } = await import("node:fs");
-  const { createRequire } = await import("node:module");
-  const require = createRequire(import.meta.url);
-  fontBytes = new Uint8Array(readFileSync(require.resolve("dejavu-fonts-ttf/ttf/DejaVuSerif.ttf")));
-  return fontBytes;
+  const read = (n: string): Uint8Array => new Uint8Array(readFileSync(new URL(`../../../assets/fonts/${n}`, import.meta.url)));
+  fonts = { regular: read("LiberationSerif-Regular.ttf"), bold: read("LiberationSerif-Bold.ttf") };
+  return fonts;
 }
 
 export async function makeFallback(doc: PDFDocument): Promise<Fallback> {
   doc.registerFontkit(fontkit);
-  const font = await doc.embedFont(await loadFont(), { subset: true });
-  const name = "FObz";
-  const attached = new Set<PDFPage>();
+  const f = await load();
+  // оба начертания готовятся заранее (embedFont асинхронный), урезаются при сохранении
+  const regular = await doc.embedFont(f.regular, { subset: true });
+  const bold = await doc.embedFont(f.bold, { subset: true });
+  const pick = (b: boolean): PDFFont => (b ? bold : regular);
+  const name = (b: boolean): string => (b ? "FObzB" : "FObz");
+  const attached = new Set<string>();
   return {
     name,
-    encode: (text) => font.encodeText(text).toString().slice(1, -1),
-    width: (text) => font.widthOfTextAtSize(text, 1000),
-    attach: (page) => { if (!attached.has(page)) { page.node.setFontDictionary(PDFName.of(name), font.ref); attached.add(page); } },
+    encode: (text, b) => pick(b).encodeText(text).toString().slice(1, -1),
+    width: (text, b) => pick(b).widthOfTextAtSize(text, 1000),
+    attach: (page, b) => {
+      const key = `${page.ref.toString()}:${b}`;
+      if (attached.has(key)) return;
+      page.node.setFontDictionary(PDFName.of(name(b)), pick(b).ref);
+      attached.add(key);
+    },
   };
 }

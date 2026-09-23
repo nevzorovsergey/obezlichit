@@ -44,4 +44,5 @@ npm run cli -- постановление.pdf акт.pdf -o out/
 
 ## Лицензия
 
-MIT
+Код — MIT. Запасной шрифт `assets/fonts/LiberationSerif-*.ttf` — Liberation Fonts 2.1.5,
+SIL Open Font License 1.1 ([`assets/fonts/LICENSE-LiberationFonts`](assets/fonts/LICENSE-LiberationFonts)).

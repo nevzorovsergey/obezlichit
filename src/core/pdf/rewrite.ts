@@ -6,10 +6,10 @@ import { fontInfo, type FontInfo } from "./fonts";
 import { lex, textShows, type TextShow, type Token } from "./lexer";
 
 export interface Glyph { code: string; uni: string; show: number }
-interface Unit { code?: string; num?: number; glyph?: Glyph; fb?: { hex: string; size: number; font: string; tz: number; scale: number } }
+interface Unit { code?: string; num?: number; glyph?: Glyph; fb?: { hex: string; size: number; font: string; tz: number; scale: number; bold: boolean } }
 
 /** Запасной шрифт — когда в урезанном шрифте документа нет нужной буквы. */
-export interface Fallback { name: string; encode(text: string): string; width(text: string): number; attach(page: PDFPage): void }
+export interface Fallback { name(bold: boolean): string; encode(text: string, bold: boolean): string; width(text: string, bold: boolean): number; attach(page: PDFPage, bold: boolean): void }
 
 export interface PageModel {
   page: PDFPage;
@@ -132,10 +132,11 @@ export function rewritePage(doc: PDFDocument, m: PageModel, pairs: Array<[string
     // потока (TJ разрезается, шрифт переключается и возвращается), порядок текста не меняется.
     if (fallback && [...e.text].some((ch) => ch !== " " && !fi.rev.has(ch))) {
       // запасной шрифт шире — сжать по горизонтали (Tz) ровно до ширины исходника
-      const fbW = fallback.width(e.text) + tc * e.text.length;
+      const bold = /Bold|Black|Heavy|Semibold/i.test(fi.name);
+      const fbW = fallback.width(e.text, bold) + tc * e.text.length;
       const scale = fbW > oldW ? oldW / fbW : 1;
-      s.units.splice(i0, i1 - i0 + 1, { fb: { hex: fallback.encode(e.text), size: s.size, font: s.font!, tz: s.Tz, scale } }, { num: fbW * scale - oldW });
-      fallback.attach(m.page);
+      s.units.splice(i0, i1 - i0 + 1, { fb: { hex: fallback.encode(e.text, bold), size: s.size, font: s.font!, tz: s.Tz, scale, bold } }, { num: fbW * scale - oldW });
+      fallback.attach(m.page, bold);
       touched.add(e.show);
       report.replaced++;
       report.fallback++;
@@ -185,7 +186,7 @@ export function rewritePage(doc: PDFDocument, m: PageModel, pairs: Array<[string
       if (u.fb) {
         flush();
         const tz = u.fb.scale < 1 ? ` ${+(u.fb.tz * u.fb.scale).toFixed(2)} Tz` : "";
-        body += `] TJ /${fallback!.name} ${u.fb.size} Tf${tz} <${u.fb.hex}> Tj${tz ? ` ${u.fb.tz} Tz` : ""} /${u.fb.font} ${u.fb.size} Tf [`;
+        body += `] TJ /${fallback!.name(u.fb.bold)} ${u.fb.size} Tf${tz} <${u.fb.hex}> Tj${tz ? ` ${u.fb.tz} Tz` : ""} /${u.fb.font} ${u.fb.size} Tf [`;
       }
       else if (u.num !== undefined) { flush(); if (Math.abs(u.num) > 0.001) body += ` ${+u.num.toFixed(3)} `; }
       else run += u.code;
