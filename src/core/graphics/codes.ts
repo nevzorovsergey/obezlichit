@@ -76,11 +76,14 @@ export interface Cluster { box: Box; paths: FilledPath[]; rects: Box[] }
 
 /** Кластеры мелких прямоугольников: модули QR и штрихи 1D-кодов. */
 export function codeClusters(paths: FilledPath[]): Cluster[] {
-  const small = paths.filter((p) => p.boxes.every((b) => (b[2] - b[0] < 12 && b[3] - b[1] < 60) || (b[3] - b[1] < 4 && b[2] - b[0] < 200)));
+  const small = paths.filter((p) => p.boxes.every((b) => b[2] - b[0] < 12 && b[3] - b[1] < 60));
   const cl: Cluster[] = [];
   for (const p of small) {
     const pb = p.boxes.reduce<Box>((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])], [...p.boxes[0]!]);
-    const near = (c: Cluster): boolean => pb[0] < c.box[2] + 4.5 && pb[2] > c.box[0] - 4.5 && pb[1] < c.box[3] + 1.5 && pb[3] > c.box[1] - 1.5;
+    // зазор — до двух модулей: порог растёт с размером модуля (крупный QR не разваливается)
+    const unit = Math.min(...p.boxes.map((b) => Math.min(b[2] - b[0], b[3] - b[1])));
+    const gx = Math.max(4.5, 2.2 * unit), gy = Math.max(1.5, 2.2 * unit);
+    const near = (c: Cluster): boolean => pb[0] < c.box[2] + gx && pb[2] > c.box[0] - gx && pb[1] < c.box[3] + gy && pb[3] > c.box[1] - gy;
     const hit = cl.filter(near);
     const into: Cluster = hit[0] ?? { box: [...pb], paths: [], rects: [] };
     if (!hit.length) cl.push(into);
@@ -147,14 +150,9 @@ export function drawCode(code: DecodedCode, data: string): string {
     const payload = utf8 ? new TextEncoder().encode(data) : cp1251(data);
     const q = QRCode.create([{ data: payload, mode: "byte" }], { errorCorrectionLevel: "M" });
     const n = q.modules.size, m = (x1 - x0) / n;
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n;) {
-        if (!q.modules.get(r, c)) { c++; continue; }
-        let e = c; while (e < n && q.modules.get(r, e)) e++;
-        ops += `${f3(x0 + c * m)} ${f3(y1 - (r + 1) * m)} ${f3((e - c) * m)} ${f3(m)} re\n`;
-        c = e;
-      }
-    }
+    // модуль — отдельный квадрат, как у исходных генераторов: так код остаётся узнаваемым для самопроверки
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+      if (q.modules.get(r, c)) ops += `${f3(x0 + c * m)} ${f3(y1 - (r + 1) * m)} ${f3(m)} ${f3(m)} re\n`;
   } else {
     const svg = bwipjs.toSVG({ bcid: code.format === "CODE_39" ? "code39" : "code128", text: data, height: 10, includetext: false });
     const vbW = Number(svg.match(/viewBox="0 0 (\d+)/)?.[1] ?? 1);
