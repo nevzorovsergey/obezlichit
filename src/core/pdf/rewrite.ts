@@ -6,7 +6,10 @@ import { fontInfo, type FontInfo } from "./fonts";
 import { lex, textShows, type TextShow, type Token } from "./lexer";
 
 export interface Glyph { code: string; uni: string; show: number }
-interface Unit { code?: string; num?: number; glyph?: Glyph }
+interface Unit { code?: string; num?: number; glyph?: Glyph; fb?: { hex: string; size: number; font: string; tz: number; scale: number } }
+
+/** Запасной шрифт — когда в урезанном шрифте документа нет нужной буквы. */
+export interface Fallback { name: string; encode(text: string): string; width(text: string): number; attach(page: PDFPage): void }
 
 export interface PageModel {
   page: PDFPage;
@@ -87,10 +90,10 @@ export function coverOf(models: PageModel[], value: string): Set<string> | undef
   return cover;
 }
 
-export interface RewriteReport { replaced: number; notFound: string[]; unencodable: string[]; widened: number }
+export interface RewriteReport { replaced: number; notFound: string[]; unencodable: string[]; widened: number; fallback: number }
 
 /** Заменить на странице пары «исходное → подмена» (длинные — первыми). */
-export function rewritePage(doc: PDFDocument, m: PageModel, pairs: Array<[string, string]>, report: RewriteReport, hitsBy: Map<string, number> = new Map()): void {
+export function rewritePage(doc: PDFDocument, m: PageModel, pairs: Array<[string, string]>, report: RewriteReport, hitsBy: Map<string, number> = new Map(), fallback?: Fallback): void {
   const used = new Set<number>();
   type Edit = { show: number; glyphs: Glyph[]; text: string };
   const edits: Edit[] = [];
@@ -125,6 +128,19 @@ export function rewritePage(doc: PDFDocument, m: PageModel, pairs: Array<[string
     const tw = (s.Tw * 1000) / (s.size || 1);
     const wOf = (code: string): number => fi.width(code) + tc + (fi.codeLen === 1 && code === "20" ? tw : 0);
     const oldW = span.reduce((a, u) => a + (u.num !== undefined ? -u.num : wOf(u.code!)), 0);
+    // Буквы нет в шрифте документа — значение целиком набирается запасным шрифтом на том же месте
+    // потока (TJ разрезается, шрифт переключается и возвращается), порядок текста не меняется.
+    if (fallback && [...e.text].some((ch) => ch !== " " && !fi.rev.has(ch))) {
+      // запасной шрифт шире — сжать по горизонтали (Tz) ровно до ширины исходника
+      const fbW = fallback.width(e.text) + tc * e.text.length;
+      const scale = fbW > oldW ? oldW / fbW : 1;
+      s.units.splice(i0, i1 - i0 + 1, { fb: { hex: fallback.encode(e.text), size: s.size, font: s.font!, tz: s.Tz, scale } }, { num: fbW * scale - oldW });
+      fallback.attach(m.page);
+      touched.add(e.show);
+      report.replaced++;
+      report.fallback++;
+      continue;
+    }
     // Пробела в урезанном шрифте может не быть: тогда он ставится сдвигом в TJ — извлечение текста
     // восстанавливает пробел по зазору. Код "" означает такой пробел-сдвиг.
     const GAP = 280;
@@ -166,7 +182,12 @@ export function rewritePage(doc: PDFDocument, m: PageModel, pairs: Array<[string
     let run = "";
     const flush = (): void => { if (run) { body += `<${run}>`; run = ""; } };
     for (const u of s.units) {
-      if (u.num !== undefined) { flush(); if (Math.abs(u.num) > 0.001) body += ` ${+u.num.toFixed(3)} `; }
+      if (u.fb) {
+        flush();
+        const tz = u.fb.scale < 1 ? ` ${+(u.fb.tz * u.fb.scale).toFixed(2)} Tz` : "";
+        body += `] TJ /${fallback!.name} ${u.fb.size} Tf${tz} <${u.fb.hex}> Tj${tz ? ` ${u.fb.tz} Tz` : ""} /${u.fb.font} ${u.fb.size} Tf [`;
+      }
+      else if (u.num !== undefined) { flush(); if (Math.abs(u.num) > 0.001) body += ` ${+u.num.toFixed(3)} `; }
       else run += u.code;
     }
     flush();

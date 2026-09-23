@@ -95,16 +95,18 @@ export interface TextShow {
   size: number;
   Tc: number;
   Tw: number;
+  /** горизонтальный масштаб, % */
+  Tz: number;
   items: ShowItem[];
   aw?: [number, number];
 }
 
-interface TextState { font: string | null; size: number; Tc: number; Tw: number }
+interface TextState { font: string | null; size: number; Tc: number; Tw: number; Tz: number }
 
 export function textShows(toks: Token[]): TextShow[] {
   const shows: TextShow[] = [];
   const stack: TextState[] = [];
-  let st: TextState = { font: null, size: 0, Tc: 0, Tw: 0 };
+  let st: TextState = { font: null, size: 0, Tc: 0, Tw: 0, Tz: 100 };
   let operands: Token[] = [];
   const num = (x: Token | undefined): number => (x && x.t === "num" ? x.v : 0);
   toks.forEach((t, k) => {
@@ -117,6 +119,7 @@ export function textShows(toks: Token[]): TextShow[] {
       case "Tf": st.font = ops[0]?.t === "name" ? ops[0].v : null; st.size = num(ops[1]); break;
       case "Tc": st.Tc = num(ops[0]); break;
       case "Tw": st.Tw = num(ops[0]); break;
+      case "Tz": st.Tz = num(ops[0]); break;
       case "Tj": case "'": {
         const s = toks[k - 1];
         if (s?.t === "str") shows.push({ op: t.v, first: k - 1, opTok: k, ...st, items: [{ t: "str", v: s.v }] });
