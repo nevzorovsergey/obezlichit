@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+# настоящие документы сюда не кладутся никогда
+private/
+*.local.pdf
