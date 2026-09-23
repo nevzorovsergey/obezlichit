@@ -31,3 +31,27 @@ export async function pdfWithQr(lines: string[], qrData: string): Promise<Uint8A
     if (q.modules.get(r, c)) page.drawRectangle({ x: 400 + c * m, y: 600 - (r + 1) * m, width: m, height: m, borderWidth: 0 });
   return doc.save({ useObjectStreams: false });
 }
+
+/** Страница с фото (JPEG) и кропом номера (Flate + PNG-предиктор Sub, как в актах АПВГК). */
+export async function pdfWithImages(): Promise<Uint8Array> {
+  const jpeg = (await import("jpeg-js")).default;
+  const { concatTransformationMatrix, drawObject, popGraphicsState, pushGraphicsState, PDFName } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  // «фото» 480×300 — шахматка 4×4 px: после пикселизации клетки сливаются в серое
+  const w = 480, h = 300, rgba = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const v = ((x >> 2) + (y >> 2)) % 2 ? 250 : 5; rgba.set([v, v, v, 255], (y * w + x) * 4); }
+  const jpg = await doc.embedJpg(jpeg.encode({ data: rgba, width: w, height: h }, 95).data);
+  page.drawImage(jpg, { x: 30, y: 400, width: 240, height: 150 });
+  // «кроп номера» 216×84 в оттенках серого, каждая строка — фильтр PNG Sub
+  const pw = 216, ph = 84, rows = new Uint8Array(ph * (pw + 1));
+  for (let y = 0; y < ph; y++) {
+    rows[y * (pw + 1)] = 1;
+    let prev = 0;
+    for (let x = 0; x < pw; x++) { const v = ((x >> 2) + (y >> 2)) % 2 ? 240 : 10; rows[y * (pw + 1) + 1 + x] = (v - prev) & 255; prev = v; }
+  }
+  const ref = doc.context.register(doc.context.flateStream(rows, { Type: "XObject", Subtype: "Image", Width: pw, Height: ph, BitsPerComponent: 8, ColorSpace: "DeviceGray", DecodeParms: { Predictor: 15, Colors: 1, Columns: pw } }));
+  page.node.setXObject(PDFName.of("Plate"), ref);
+  page.pushOperators(pushGraphicsState(), concatTransformationMatrix(216, 0, 0, 84, 300, 300), drawObject("Plate"), popGraphicsState());
+  return doc.save({ useObjectStreams: false });
+}

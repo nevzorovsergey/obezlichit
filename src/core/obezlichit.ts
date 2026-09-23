@@ -3,6 +3,7 @@
 import { PDFDict, PDFDocument, PDFName, PDFString } from "pdf-lib";
 import { detect, type Find, type Kind } from "./detect/detect";
 import { replaceCodes, type CodesReport } from "./graphics/codes";
+import { pixelateImages, type ImagesReport } from "./graphics/images";
 import { coverOf, pageModel, rewritePage, type PageModel, type RewriteReport } from "./pdf/rewrite";
 import { extractText } from "./pdf/text";
 import { cryptoRng, keyOf, plateLike, Synth, type Rng } from "./synth/generate";
@@ -52,7 +53,7 @@ export async function makePlan(inputs: InputFile[], rng: Rng = cryptoRng()): Pro
   return { files, substitutions };
 }
 
-export interface OutputFile { name: string; bytes: Uint8Array; report: RewriteReport & { codes: CodesReport } }
+export interface OutputFile { name: string; bytes: Uint8Array; report: RewriteReport & { codes: CodesReport; images: ImagesReport } }
 
 export async function applyPlan(plan: Plan): Promise<OutputFile[]> {
   const out: OutputFile[] = [];
@@ -78,11 +79,14 @@ export async function applyPlan(plan: Plan): Promise<OutputFile[]> {
       m.page.node.set(PDFName.of("Contents"), f.doc.context.register(f.doc.context.flateStream(next)));
       return pageModel(f.doc, m.page);
     });
+    const images: ImagesReport = { pixelated: 0, replaced: 0 };
+    const seen = new Set<string>();
+    for (const m of f.models) pixelateImages(f.doc, m.page, seen, images);
     const hits = new Map<string, number>();
     for (const m of models) rewritePage(f.doc, m, [...pairs.entries()], report, hits);
     report.notFound = [...pairs.keys()].filter((k) => !hits.get(k));
     scrubMetadata(f.doc);
-    out.push({ name: f.name, bytes: await f.doc.save({ useObjectStreams: false, updateFieldAppearances: false }), report: { ...report, codes } });
+    out.push({ name: f.name, bytes: await f.doc.save({ useObjectStreams: false, updateFieldAppearances: false }), report: { ...report, codes, images } });
   }
   return out;
 }
